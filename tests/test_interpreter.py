@@ -288,6 +288,15 @@ joined = muons where iso > 2 with { iso2 = 2*iso } union muons where pt < 5
 """, test_dataset())
     assert tolist(output) == [{"joined": [{"pt": 3.3, "iso": 100, "iso2": 200}, {"pt": 1.1, "iso": 0}, {"pt": 2.2, "iso": 0}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50, "iso2": 100}, {"pt": 5.5, "iso": 30, "iso2": 60}]}, {"joined": [{"pt": 8.8, "iso": 3, "iso2": 6}, {"pt": 9.9, "iso": 4, "iso2": 8}]}]
 
+@pytest.mark.parametrize("dataset", [test_dataset_realistic, test_dataset_realistic_awkward])
+def test_tabular_where_union_block(dataset):
+    thedata = dataset()
+    
+    output, counter = run(r"""
+leptons = { electrons as (lep1, lep2) union muons as (lep1, lep2) } where lep1.charge != lep2.charge
+""", thedata)
+    assert tolist(output) == [{'leptons': [{'lep1': {'pt': 1, 'charge': 1, 'iso': 10}, 'lep2': {'pt': 2, 'charge': -1, 'iso': 10}}, {'lep1': {'pt': 1, 'charge': 1, 'iso': 10}, 'lep2': {'pt': 4, 'charge': -1, 'iso': 10}}, {'lep1': {'pt': 2, 'charge': -1, 'iso': 10}, 'lep2': {'pt': 3, 'charge': 1, 'iso': 10}}, {'lep1': {'pt': 2, 'charge': -1, 'iso': 10}, 'lep2': {'pt': 5, 'charge': 1, 'iso': 10}}, {'lep1': {'pt': 3, 'charge': 1, 'iso': 10}, 'lep2': {'pt': 4, 'charge': -1, 'iso': 10}}, {'lep1': {'pt': 4, 'charge': -1, 'iso': 10}, 'lep2': {'pt': 5, 'charge': 1, 'iso': 10}}, {'lep1': {'pt': 1.1, 'charge': -1, 'iso': 0}, 'lep2': {'pt': 2.2, 'charge': 1, 'iso': 0}}, {'lep1': {'pt': 2.2, 'charge': 1, 'iso': 0}, 'lep2': {'pt': 3.3, 'charge': -1, 'iso': 100}}]}, {'leptons': []}, {'leptons': [{'lep1': {'pt': 30, 'charge': 1, 'iso': 15}, 'lep2': {'pt': 50, 'charge': -1, 'iso': 15}}, {'lep1': {'pt': 4.4, 'charge': 1, 'iso': 50}, 'lep2': {'pt': 5.5, 'charge': -1, 'iso': 30}}]}, {'leptons': [{'lep1': {'pt': 1, 'charge': 1, 'iso': 9}, 'lep2': {'pt': 2, 'charge': -1, 'iso': 8}}, {'lep1': {'pt': 1, 'charge': 1, 'iso': 9}, 'lep2': {'pt': 4, 'charge': -1, 'iso': 6}}, {'lep1': {'pt': 2, 'charge': -1, 'iso': 8}, 'lep2': {'pt': 3, 'charge': 1, 'iso': 7}}, {'lep1': {'pt': 3, 'charge': 1, 'iso': 7}, 'lep2': {'pt': 4, 'charge': -1, 'iso': 6}}, {'lep1': {'pt': 6.6, 'charge': 1, 'iso': 1}, 'lep2': {'pt': 7.7, 'charge': -1, 'iso': 2}}, {'lep1': {'pt': 6.6, 'charge': 1, 'iso': 1}, 'lep2': {'pt': 9.9, 'charge': -1, 'iso': 4}}, {'lep1': {'pt': 7.7, 'charge': -1, 'iso': 2}, 'lep2': {'pt': 8.8, 'charge': 1, 'iso': 3}}, {'lep1': {'pt': 8.8, 'charge': 1, 'iso': 3}, 'lep2': {'pt': 9.9, 'charge': -1, 'iso': 4}}]}]
+
 @pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
 def test_tabular_cross(dataset):
     thedata = dataset()

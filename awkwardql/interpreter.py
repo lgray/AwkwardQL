@@ -782,6 +782,9 @@ def wherefcn(node, symbols, counter, weight, rowkey):
                     chosen_indices.append(i)
         out = container[chosen_indices]
 
+    elif isinstance(container, ak.layout.EmptyArray):
+        out = ak.layout.EmptyArray()
+
     else:
         raise parser.QueryError("left of 'where' must be a list", node.arguments[0].line, node.arguments[0].source)
 
