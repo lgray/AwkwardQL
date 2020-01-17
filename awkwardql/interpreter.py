@@ -861,8 +861,7 @@ def groupfcn(node, symbols, counter, weight, rowkey):
         out = ak.layout.ListArray64(starts, stops, container[outidx])
 
     elif isinstance(container, ak.layout.EmptyArray):
-        out = ak.layout.EmptyArray()
-        out.setidentities()
+        out = container
 
     else:
         raise parser.QueryError("left of 'group by' must be a list", node.arguments[0].line, node.arguments[0].source)
@@ -897,12 +896,12 @@ class SetFunction:
             self.fill(rowkey, left, right, out, node)
         elif (isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray)) and
               isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray))):
-            if self.name not in ['cross', 'except']:
+            if self.name not in ['cross', 'except', 'join']:
                 out = ak.FillableArray()
             else:
                 out = []
             self.fill(rowkey, left, right, out, node)
-            if self.name not in ['cross', 'except']:
+            if self.name not in ['cross', 'except', 'join']:
                 out = out.snapshot().layout
                 out.setidentities()
             else:
@@ -984,17 +983,29 @@ class JoinFunction(SetFunction):
         if isinstance(left, ak.layout.RecordArray):
             # switch to array manipulation requires union array
             rights = {x.identity: x for x in right}
-            for x in left:
+            outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_join_' + right.identities.fieldloc[-1][1])]
+            outidentities = ak.layout.Identities64(0,
+                                                   outfieldloc,
+                                                   np.arange(len(left)).reshape(len(left), 1))
+            leftindices = []
+            rightindices = []
+            for i, x in enumerate(left):
                 r = rights.get(x.identity)
                 if r is not None:
-                    out.beginrecord()
-                    for key in left.keys():
-                        out.field(key)
-                        generate_awkward(x[key], out)
-                    for key in right.keys():
-                        if key not in left.keys():
-                            out.field(key)
-                            generate_awkward(r, out)
+                    leftindices.append(i)
+                    rightindices.append(r.at)
+            selleft = left[leftindices]
+            selright = right[rightindices]
+            
+            outdict = {k: selleft[k] for k in selleft.keys()}
+            for key in selright.keys():
+                if key not in selleft.keys():
+                    outdict[key] = selright[key]
+            if len(outdict.keys()):
+                out.append(ak.layout.RecordArray(outdict, outidentities))
+            else:
+                out.append(ak.layout.RecordArray(0))
+            
 
 
 fcns[".join"] = JoinFunction()
@@ -1287,9 +1298,9 @@ def runstep(node, symbols, counter, weight, rowkey):
             out = out.snapshot().layout
             out.setidentities()
         elif isinstance(container, ak.layout.RecordArray):
-            out = ak.FillableArray()
-
             scope = SymbolTable(symbols)
+            outdict = {}
+            temp = ak.FillableArray()
             for rec in container:
                 for key in container.keys():
                     scope[key] = rec[key]
@@ -1298,22 +1309,46 @@ def runstep(node, symbols, counter, weight, rowkey):
                     scope = SymbolTable(scope)
 
                 for subnode in node.body:
-                    runstep(subnode, scope, counter, weight, container.fieldindex(container.keys()[0]))
+                    runstep(subnode, scope, counter, weight, container.identities.fieldloc[-1][0])
 
-                out.beginrecord()
+                temp.beginrecord()
                 for key in scope:
-                    out.field(key)
-                    if isinstance(scope[key], data.ValueInstance):
-                        generate_awkward(scope[key].value, out)
-                    else:
-                        generate_awkward(scope[key], out)
-                out.endrecord()
+                    if key not in container.keys():
+                        temp.field(key)
+                        val = scope[key].value if isinstance(scope[key], data.ValueInstance) else scope[key]
+                        # commented bit below needs to deal with awkward contents correctly
+                        # if isinstance(val, ak.layout.Content):
+                        #     outdict[key] = val
+                        #     if outdict[key].identities is None:
+                        #         fieldloc = container.identities.fieldloc
+                        #         fieldloc.append((fieldloc[-1][0] + 1, key))
+                        #         identities = ak.layout.Identities64(0,
+                        #                                             fieldloc,
+                        #                                             np.arange(len(outdict[key])).reshape(len(outdict[key]), 1))
+                        #         outdict[key].setidentities(identities)
+                        # else:
+                        generate_awkward(val, temp)
+                temp.endrecord()
+            temp = temp.snapshot().layout
 
-            out = out.snapshot().layout
-            out.setidentities()
+            outdict = {key: val for key, val in container.fielditems()}
+            if len(temp):
+                for key, val in temp.fielditems():
+                    outdict[key] = val
+                    fieldloc = container.identities.fieldloc
+                    fieldloc.append((fieldloc[-1][0] + 1, key))
+                    identities = ak.layout.Identities64(0,
+                                                        fieldloc,
+                                                        np.arange(len(outdict[key])).reshape(len(outdict[key]), 1))
+                    outdict[key].setidentities(identities)
+            if len(outdict.keys()) and len(container):
+                out = ak.layout.RecordArray(outdict, container.identities)
+            else:
+                out = ak.layout.EmptyArray()
+                
         else:
-            raise parser.QueryError("value to the left of '{0}' must be a list".format("to" if node.new else "with"), node.container.line, node.source)
-
+            raise parser.QueryError("value to the left of '{0}' must be a list".format("to" if node.new else "with"),
+                                    node.container.line, node.source)
         return out
 
     elif isinstance(node, parser.Has):
