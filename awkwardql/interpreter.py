@@ -947,7 +947,8 @@ class CrossFunction(SetFunction):
                     out.append(obj)
         elif isinstance(left, ak.layout.RecordArray):
             combos = np.array(list(itertools.product(range(len(left)), range(len(right)))))
-            if len(combos):
+            combo_len = len(combos)
+            if combo_len:
                 left_keys = list(left.keys())
                 right_keys = list(filter(None, [x if x not in left_keys else None for x in right.keys()]))
 
@@ -956,6 +957,11 @@ class CrossFunction(SetFunction):
 
                 outdict = {field: left_combs[field] for field in left_keys}
                 outdict.update({field: right_combs[field] for field in right_keys})
+
+                outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_cross_' + right.identities.fieldloc[-1][1])]
+                outidentities = ak.layout.Identities64(0,
+                                                       outfieldloc,
+                                                       np.arange(combo_len).reshape(combo_len, 1))
 
                 out.append(ak.layout.RecordArray(outdict))
             else:
@@ -1007,6 +1013,7 @@ class JoinFunction(SetFunction):
                 out.append(ak.layout.RecordArray(outdict, outidentities))
             else:
                 out.append(ak.layout.EmptyArray())
+                out[0].setidentities()
             
 
 
@@ -1049,7 +1056,7 @@ class UnionFunction(SetFunction):
                 tags.append(1)
                 indices.append(iright)
             
-            outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_join_' + right.identities.fieldloc[-1][1])]
+            outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_union_' + right.identities.fieldloc[-1][1])]
             outidentities = ak.layout.Identities64(0,
                                                    outfieldloc,
                                                    np.arange(len(indices)).reshape(len(indices), 1))
@@ -1246,13 +1253,15 @@ def runstep(node, symbols, counter, weight, rowkey):
             combos = container[combs]
             if len(combos) > 0:
                 if len(node.names) > 1:
-                    identities = ak.layout.Identities32(0,
+                    identities = ak.layout.Identities64(0,
                                                         container.identities.fieldloc,
                                                         np.arange(len(combos)).reshape((len(combos), 1)))
-                    out = ak.layout.RecordArray({name: combos[:, i] for i, name in enumerate(node.names)})
-                    out.setidentities(identities)
+                    out = ak.layout.RecordArray({name: combos[:, i] for i, name in enumerate(node.names)}, identities)
                 else:
-                    out = ak.layout.RecordArray({node.names[0]: combos})
+                    identities = ak.layout.Identities64(0,
+                                                        container.identities.fieldloc,
+                                                        np.arange(len(combos)).reshape((len(combos), 1)))
+                    out = ak.layout.RecordArray({node.names[0]: combos}, identities)
             else:
                 out = combos
 
