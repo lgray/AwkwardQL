@@ -408,6 +408,7 @@ def test_tabular_max(dataset):
 x = 3
 extreme = muons max by pt
 """, thedata)
+    print(tolist(output))
     assert tolist(output) == [{"x": 3, "extreme": {"pt": 3.3, "iso": 100}}, {"x": 3}, {"x": 3, "extreme": {"pt": 5.5, "iso": 30}}, {"x": 3, "extreme": {"pt": 9.9, "iso": 4}}]
 
     output, counter = run(r"""

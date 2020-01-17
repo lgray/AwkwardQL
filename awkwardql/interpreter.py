@@ -38,6 +38,8 @@ def generate_awkward(val, out, level=0, record_type=None, verbose=False):
         if verbose:
             print(spaces + 'out.string({0})'.format(val))
         out.string(val)
+    elif val is None:
+        pass
     elif isinstance(val, ak.layout.RecordArray):
         for i, rec in enumerate(val):
             if verbose:
@@ -94,7 +96,7 @@ def generate_awkward(val, out, level=0, record_type=None, verbose=False):
         if verbose:
             print(spaces + 'out.endlist()')
         out.endlist()
-    elif isinstance(val, ak.layout.NumpyArray):
+    elif isinstance(val, (ak.layout.NumpyArray, ak.layout.UnionArray8_64)):
         if verbose:
             print(spaces + 'out.beginlist() # len={0} / format={1} / type={2} / ndim={3}'.format(len(val),
                                                                                                  val.format,
@@ -684,7 +686,7 @@ class MinMaxFunction:
                     if bestval is None or (self.ismin and result < bestval) or (not self.ismin and result > bestval):
                         bestval = result
                         bestobj = x
-        elif isinstance(container, ak.layout.RecordArray) or isAwkwardListInstance:
+        elif isinstance(container, (ak.layout.RecordArray, ak.layout.UnionArray8_64)) or isAwkwardListInstance:
             if isAwkwardListInstance:
                 container = container.value
             for i, x in enumerate(container):
@@ -766,7 +768,7 @@ def wherefcn(node, symbols, counter, weight, rowkey):
         out = out.snapshot().layout
         out.setidentities()
 
-    elif isinstance(container, ak.layout.RecordArray):
+    elif isinstance(container, (ak.layout.RecordArray, ak.layout.UnionArray8_64)):
         chosen_indices = []
 
         scope = SymbolTable(symbols)
@@ -774,7 +776,7 @@ def wherefcn(node, symbols, counter, weight, rowkey):
             for key in container.keys():
                 scope[key] = rec[key]
 
-            result = runstep(node.arguments[1], scope, counter, weight, container.fieldindex(container.keys()[0]))
+            result = runstep(node.arguments[1], scope, counter, weight, container.identities.fieldloc[0])
             if result is not None:
                 if not (isinstance(result, data.ValueInstance) and isinstance(result.value, bool)):
                     raise parser.QueryError("right or 'where' must be boolean", node.arguments[1].line, node.arguments[1].source)
@@ -828,7 +830,7 @@ def groupfcn(node, symbols, counter, weight, rowkey):
 
                 groups[groupkey].append(x)
 
-    elif isinstance(container, ak.layout.RecordArray):
+    elif isinstance(container, (ak.layout.RecordArray, ak.layout.UnionArray8_64)):
         groupindex = index.RowIndex([])   # new, never-before-seen index (two groupbys can't be merged)
         groups = {}
 
@@ -894,14 +896,14 @@ class SetFunction:
 
             out = data.ListInstance([], rowkey, index.DerivedColKey(node))
             self.fill(rowkey, left, right, out, node)
-        elif (isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray)) and
-              isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray))):
-            if self.name not in ['cross', 'except', 'join']:
+        elif (isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64)) and
+              isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
+            if self.name not in ['cross', 'except', 'join', 'union']:
                 out = ak.FillableArray()
             else:
                 out = []
             self.fill(rowkey, left, right, out, node)
-            if self.name not in ['cross', 'except', 'join']:
+            if self.name not in ['cross', 'except', 'join', 'union']:
                 out = out.snapshot().layout
                 out.setidentities()
             else:
@@ -1001,10 +1003,10 @@ class JoinFunction(SetFunction):
             for key in selright.keys():
                 if key not in selleft.keys():
                     outdict[key] = selright[key]
-            if len(outdict.keys()):
+            if len(outdict.keys()) and len(selleft):
                 out.append(ak.layout.RecordArray(outdict, outidentities))
             else:
-                out.append(ak.layout.RecordArray(0))
+                out.append(ak.layout.EmptyArray())
             
 
 
@@ -1032,14 +1034,32 @@ class UnionFunction(SetFunction):
                     seen[x.row] = obj
                     out.append(obj)
         elif isinstance(left, ak.layout.RecordArray):
+            seen = set()
             # switch to array manipulation requires union array
-            for rec in left:
-                seen[rec.identity] = 0
-                generate_awkward(rec, out)
-            for i, rec in enumerate(right):
-                if rec.identity in seen.keys():
+            
+            tags = []
+            indices = []
+            for ileft, rec in enumerate(left):
+                seen.add(rec.identity)
+                tags.append(0)
+                indices.append(ileft)
+            for iright, rec in enumerate(right):
+                if rec.identity in seen:
                     continue
-                generate_awkward(rec, out)
+                tags.append(1)
+                indices.append(iright)
+            
+            outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_join_' + right.identities.fieldloc[-1][1])]
+            outidentities = ak.layout.Identities64(0,
+                                                   outfieldloc,
+                                                   np.arange(len(indices)).reshape(len(indices), 1))
+                
+            tags = ak.layout.Index8(tags)
+            indices = ak.layout.Index64(indices)
+            unionout = ak.layout.UnionArray8_64(tags, indices, [left, right], identities=outidentities)
+            out.append(unionout)
+        elif isinstance(left, ak.layout.EmptyArray):
+            out.append(ak.layout.EmptyArray())
 
 
 fcns[".union"] = UnionFunction()
