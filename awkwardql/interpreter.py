@@ -573,9 +573,9 @@ class NewListFunction:
             outidentities = ak.layout.Identities64(0,
                                                    outfieldloc,
                                                    np.arange(len(indices)).reshape(len(indices), 1))
-            
-            outlist = ak.layout.UnionArray8_64(tags, indices, parents, identities = outidentities)
-            
+
+            outlist = ak.layout.UnionArray8_64(tags, indices, parents, identities=outidentities)
+
             return outlist
         else:
             return data.ListInstance(out, rowkey, index.DerivedColKey(node))
@@ -898,11 +898,11 @@ class SetFunction:
             return None
 
         if (isinstance(left, data.ListInstance) and
-            isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
+           isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
             if len(left.value) == 0:
                 left = ak.layout.EmptyArray()
         if (isinstance(right, data.ListInstance) and
-            isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
+           isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
             if len(right.value) == 0:
                 right = ak.layout.EmptyArray()
 
@@ -989,7 +989,7 @@ class CrossFunction(SetFunction):
                                                        outfieldloc,
                                                        np.arange(combo_len).reshape(combo_len, 1))
 
-                out.append(ak.layout.RecordArray(outdict))
+                out.append(ak.layout.RecordArray(outdict, outidentities))
             else:
                 out.append(ak.layout.EmptyArray())
                 out[0].setidentities()
@@ -1030,7 +1030,7 @@ class JoinFunction(SetFunction):
                     rightindices.append(r.at)
             selleft = left[leftindices]
             selright = right[rightindices]
-            
+
             outdict = {k: selleft[k] for k in selleft.keys()}
             for key in selright.keys():
                 if key not in selleft.keys():
@@ -1043,7 +1043,6 @@ class JoinFunction(SetFunction):
         elif isinstance(left, ak.layout.EmptyArray):
             out.append(ak.layout.EmptyArray())
             out[0].setidentities()
-            
 
 
 fcns[".join"] = JoinFunction()
@@ -1072,7 +1071,7 @@ class UnionFunction(SetFunction):
         elif isinstance(left, ak.layout.RecordArray):
             seen = set()
             # switch to array manipulation requires union array
-            
+
             tags = []
             indices = []
             for ileft, rec in enumerate(left):
@@ -1084,12 +1083,12 @@ class UnionFunction(SetFunction):
                     continue
                 tags.append(1)
                 indices.append(iright)
-            
+
             outfieldloc = [(0, left.identities.fieldloc[-1][1] + '_union_' + right.identities.fieldloc[-1][1])]
             outidentities = ak.layout.Identities64(0,
                                                    outfieldloc,
                                                    np.arange(len(indices)).reshape(len(indices), 1))
-                
+
             tags = ak.layout.Index8(tags)
             indices = ak.layout.Index64(indices)
             unionout = ak.layout.UnionArray8_64(tags, indices, [left, right], identities=outidentities)
@@ -1403,7 +1402,7 @@ def runstep(node, symbols, counter, weight, rowkey):
                 out = ak.layout.RecordArray(outdict, container.identities)
             else:
                 out = ak.layout.EmptyArray()
-                
+
         else:
             raise parser.QueryError("value to the left of '{0}' must be a list".format("to" if node.new else "with"),
                                     node.container.line, node.source)
