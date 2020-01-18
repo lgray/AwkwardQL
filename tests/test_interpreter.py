@@ -305,16 +305,18 @@ joined = muons where pt < 5 union muons where iso > 2
 """, thedata)
     assert tolist(output) == [{"joined": [{"pt": 1.1, "iso": 0}, {"pt": 2.2, "iso": 0}, {"pt": 3.3, "iso": 100}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50}, {"pt": 5.5, "iso": 30}]}, {"joined": [{"pt": 8.8, "iso": 3}, {"pt": 9.9, "iso": 4}]}]
 
+@pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
+def test_tabular_where_with_union(dataset):
+    thedata = dataset()
 
-def test_tabular_where_with_union():
     output, counter = run(r"""
 joined = muons where iso > 2 with { iso2 = 2*iso } union muons
-""", test_dataset())
+""", thedata)
     assert tolist(output) == [{"joined": [{"pt": 3.3, "iso": 100, "iso2": 200}, {"pt": 1.1, "iso": 0}, {"pt": 2.2, "iso": 0}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50, "iso2": 100}, {"pt": 5.5, "iso": 30, "iso2": 60}]}, {"joined": [{"pt": 8.8, "iso": 3, "iso2": 6}, {"pt": 9.9, "iso": 4, "iso2": 8}, {"pt": 6.6, "iso": 1}, {"pt": 7.7, "iso": 2}]}]
 
     output, counter = run(r"""
 joined = muons where iso > 2 with { iso2 = 2*iso } union muons where pt < 5
-""", test_dataset())
+""", thedata)
     assert tolist(output) == [{"joined": [{"pt": 3.3, "iso": 100, "iso2": 200}, {"pt": 1.1, "iso": 0}, {"pt": 2.2, "iso": 0}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50, "iso2": 100}, {"pt": 5.5, "iso": 30, "iso2": 60}]}, {"joined": [{"pt": 8.8, "iso": 3, "iso2": 6}, {"pt": 9.9, "iso": 4, "iso2": 8}]}]
 
 @pytest.mark.parametrize("dataset", [test_dataset_realistic, test_dataset_realistic_awkward])
@@ -360,11 +362,13 @@ joined = muons where pt < 5 and iso > 2
 """, thedata)
     assert tolist(output) == [{"joined": [{"pt": 3.3, "iso": 100}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50}]}, {"joined": []}]
 
-def test_tabular_join_with():
+@pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
+def test_tabular_join_with(dataset):
+    thedata = dataset()
 
     output, counter = run(r"""
 joined = muons where iso > 2 with { iso2 = 2*iso } join muons
-""", test_dataset())
+""", thedata)
     assert tolist(output) == [{"joined": [{"pt": 3.3, "iso": 100, "iso2": 200}]}, {"joined": []}, {"joined": [{"pt": 4.4, "iso": 50, "iso2": 100}, {"pt": 5.5, "iso": 30, "iso2": 60}]}, {"joined": [{"pt": 8.8, "iso": 3, "iso2": 6}, {"pt": 9.9, "iso": 4, "iso2": 8}]}]
 
 @pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
@@ -436,24 +440,26 @@ whatever = if has extreme then extreme.iso
 """, thedata)
     assert tolist(output) == [{"x": 3, "extreme": {"pt": 1.1, "iso": 0}, "whatever": 0}, {"x": 3}, {"x": 3, "extreme": {"pt": 4.4, "iso": 50}, "whatever": 50}, {"x": 3, "extreme": {"pt": 6.6, "iso": 1}, "whatever": 1}]
 
-def test_tabular_max_with_identities():
-    thedata = test_dataset()
+@pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
+def test_tabular_max_with_identities(dataset):
+    thedata = dataset()
 
     output, counter = run(r"""
 extreme = muons where iso > 2 with { iso2 = 2*iso } union muons min by pt
 whatever = if has extreme then extreme?.iso2
 """, thedata)
-    assert output.tolist() == [{"extreme": {"pt": 1.1, "iso": 0}}, {"extreme": {"pt": 4.4, "iso": 50, "iso2": 100}, "whatever": 100}, {"extreme": {"pt": 6.6, "iso": 1}}]
+    assert tolist(output) == [{"extreme": {"pt": 1.1, "iso": 0}}, {"extreme": {"pt": 4.4, "iso": 50, "iso2": 100}, "whatever": 100}, {"extreme": {"pt": 6.6, "iso": 1}}]
 
     output, counter = run(r"""
 extreme = muons where iso > 2 with { iso2 = 2*iso } union muons min by pt
 whatever = ?extreme?.iso2
 """, thedata)
-    assert output.tolist() == [{"extreme": {"pt": 1.1, "iso": 0}}, {"extreme": {"pt": 4.4, "iso": 50, "iso2": 100}, "whatever": 100}, {"extreme": {"pt": 6.6, "iso": 1}}]
+    assert tolist(output) == [{"extreme": {"pt": 1.1, "iso": 0}}, {"extreme": {"pt": 4.4, "iso": 50, "iso2": 100}, "whatever": 100}, {"extreme": {"pt": 6.6, "iso": 1}}]
 
 @pytest.mark.parametrize("dataset", [test_dataset_realistic, test_dataset_realistic_awkward])
 def test_realistic_queries(dataset):
     thedata = dataset()
+
     output, counter = run(r"""
 def mass(one, two) {
     91.2 + one.pt + two.pt # yes this is just a stand in
@@ -466,6 +472,19 @@ best_leptons = {
 }
 """, thedata)
     assert tolist(output) == [{'best_leptons': [{'pt': 1, 'charge': 1, 'iso': 10}, {'pt': 2, 'charge': -1, 'iso': 10}]}, {'best_leptons': []}, {'best_leptons': [{'pt': 4.4, 'charge': 1, 'iso': 50}, {'pt': 5.5, 'charge': -1, 'iso': 30}]}, {'best_leptons': [{'pt': 1, 'charge': 1, 'iso': 9}, {'pt': 2, 'charge': -1, 'iso': 8}]}]
+    
+    output, counter = run(r"""
+def mass(one, two) {
+    91.2 + one.pt + two.pt # yes this is just a stand in
+}
+third_lepton = {
+    leptons = electrons union muons
+    dileptons = { electrons as (lep1, lep2) union muons as (lep1, lep2) } where lep1.charge != lep2.charge
+    Z = dileptons min by abs(mass(lep1, lep2) - 91.2)
+    leptons except [?Z.lep1, ?Z.lep2] max by pt
+}
+""", thedata)
+    assert tolist(output) == [{'third_lepton': {'pt': 5, 'charge': 1, 'iso': 10}}, {'third_lepton': {'pt': 100, 'charge': -1, 'iso': 5}}, {'third_lepton': {'pt': 50, 'charge': -1, 'iso': 15}}, {'third_lepton': {'pt': 9.9, 'charge': -1, 'iso': 4}}]
 
 @pytest.mark.parametrize("dataset", [test_dataset, test_dataset_awkward])
 def test_reducers(dataset):

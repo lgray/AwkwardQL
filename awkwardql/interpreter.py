@@ -550,18 +550,35 @@ class NewListFunction:
     def __call__(self, node, symbols, counter, weight, rowkey):
         isAwkward = False
         out = []
+        tags = []
+        indices = []
+        parents = []
+        iparent = 0
         for arg in node.arguments:
             result = runstep(arg, symbols, counter, weight, rowkey)
             if isinstance(result, (ak.layout.Record)):
-                # print(ak.tolist(result))
                 isAwkward = True
-            if result is not None:
-                out.append(result)
-
             if isAwkward:
-                pass
-
-        return data.ListInstance(out, rowkey, index.DerivedColKey(node))
+                indices.append(result.at)
+                tags.append(iparent)
+                parents.append(result.array)
+                iparent += 1
+            else:
+                if result is not None:
+                    out.append(result)
+        if isAwkward:
+            tags = ak.layout.Index8(tags)
+            indices = ak.layout.Index64(indices)
+            outfieldloc = [(0, 'newlist' + ''.join([str(p.identities.fieldloc) for p in parents]))]
+            outidentities = ak.layout.Identities64(0,
+                                                   outfieldloc,
+                                                   np.arange(len(indices)).reshape(len(indices), 1))
+            
+            outlist = ak.layout.UnionArray8_64(tags, indices, parents, identities = outidentities)
+            
+            return outlist
+        else:
+            return data.ListInstance(out, rowkey, index.DerivedColKey(node))
 
 
 fcns['newlist'] = NewListFunction()
@@ -880,6 +897,15 @@ class SetFunction:
         if left is None or right is None:
             return None
 
+        if (isinstance(left, data.ListInstance) and
+            isinstance(right, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
+            if len(left.value) == 0:
+                left = ak.layout.EmptyArray()
+        if (isinstance(right, data.ListInstance) and
+            isinstance(left, (ak.layout.RecordArray, ak.layout.EmptyArray, ak.layout.UnionArray8_64))):
+            if len(right.value) == 0:
+                right = ak.layout.EmptyArray()
+
         if isinstance(left, data.ListInstance) and isinstance(right, data.ListInstance):
             assert rowkey == left.row and rowkey == right.row
 
@@ -1014,6 +1040,9 @@ class JoinFunction(SetFunction):
             else:
                 out.append(ak.layout.EmptyArray())
                 out[0].setidentities()
+        elif isinstance(left, ak.layout.EmptyArray):
+            out.append(ak.layout.EmptyArray())
+            out[0].setidentities()
             
 
 
@@ -1082,7 +1111,7 @@ class ExceptFunction(SetFunction):
             for x in left.value:
                 if x.row not in rights:
                     out.append(x)
-        elif isinstance(left, ak.layout.RecordArray):
+        elif isinstance(left, (ak.layout.RecordArray, ak.layout.UnionArray8_64)):
             rights = {x.identity for x in right}
             idxs = [x.identity not in rights for x in left]
             out.append(left[idxs])
